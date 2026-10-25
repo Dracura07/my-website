@@ -1,0 +1,487 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>发光的海底</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="发光的海底">
+<meta name="theme-color" content="#010608">
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+:root{padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}
+*{box-sizing:border-box}body{margin:0;font-size:14px}button{font:inherit}[hidden]{display:none!important}
+
+/* Layout: full-bleed swipeable sea on canvas (endless sideways, surface to seafloor vertically); title top-left, depth gauge right, creature chips bottom */
+:root{
+  --deep:#010608; --ink:#e6fbff; --mute:#86bcc8; --chip:rgba(8,38,50,.62); --line:rgba(140,230,255,.24);
+  --display:"ZCOOL KuaiLe","PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,sans-serif;
+  --body:"PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,sans-serif;
+  color-scheme:dark;
+}
+html,body{height:100%;overflow:hidden}
+body{background:var(--deep);color:var(--ink);font-family:var(--body);-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none;overscroll-behavior:none}
+#c{position:fixed;inset:0;display:block;touch-action:none;cursor:grab}
+.top{position:fixed;top:0;left:0;right:0;pointer-events:none;
+  padding-top:calc(env(safe-area-inset-top,0px) + 14px);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+h1{margin:0;font-family:var(--display);font-weight:400;font-size:clamp(28px,6vw,52px);letter-spacing:.04em;text-shadow:0 0 18px rgba(120,230,255,.6)}
+.right{display:flex;flex-direction:column;align-items:flex-end;gap:6px}
+.snd{pointer-events:auto;border:1px solid var(--line);background:var(--chip);color:var(--ink);font-family:var(--display);font-size:clamp(16px,2.4vw,24px);padding:.45em .9em;border-radius:999px;cursor:pointer}
+.snd[aria-pressed="false"]{opacity:.55}
+.btns{display:flex;gap:6px}
+body{-webkit-touch-callout:none;-webkit-text-size-adjust:100%}
+.snd:focus-visible,.chip:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+#hint{font-size:clamp(14px,2vw,20px);color:var(--mute);transition:opacity 1s;text-align:right;line-height:1.5}
+.depth{position:fixed;pointer-events:none;top:50%;transform:translateY(-50%);right:max(10px,env(safe-area-inset-right,0px));
+  display:flex;flex-direction:column;align-items:center;gap:6px;font-family:var(--display);color:var(--mute);font-size:clamp(13px,1.8vw,18px)}
+.track{position:relative;width:3px;height:110px;border-radius:2px;background:linear-gradient(#7fe3ff66,#7fe3ff10)}
+.track i{position:absolute;left:50%;width:11px;height:11px;margin:-5.5px 0 0 -5.5px;border-radius:50%;background:#bff4ff;box-shadow:0 0 10px #7fe3ff}
+#dv{writing-mode:vertical-rl;letter-spacing:.15em;font-variant-numeric:tabular-nums}
+.bar{position:fixed;left:0;right:0;bottom:0;padding-bottom:calc(env(safe-area-inset-bottom,0px) + 12px);padding-top:8px}
+.chips{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.chips::-webkit-scrollbar{display:none}
+.chip{flex:0 0 auto;display:flex;align-items:center;gap:7px;border:1px solid var(--line);background:var(--chip);color:var(--ink);font-family:var(--display);font-size:clamp(17px,2.6vw,26px);padding:.5em .85em .5em .65em;border-radius:999px;cursor:pointer;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+.chip:active{transform:scale(.94)}
+.dot{width:.6em;height:.6em;border-radius:50%}
+#card{position:fixed;left:0;top:0;pointer-events:none;max-width:min(340px,80vw);padding:10px 13px;border-radius:14px;background:rgba(4,24,32,.84);border:1px solid var(--line);opacity:0;transition:opacity .35s;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+#card b{display:block;font-family:var(--display);font-weight:400;font-size:clamp(22px,3.4vw,32px);margin-bottom:3px}
+#card span{font-size:clamp(14px,2.2vw,19px);line-height:1.5;color:#bfe6ee}
+</style>
+</head>
+<body>
+<canvas id="c" aria-label="会发光的海底世界，手指滑动可以游到更远更深的地方，点一点小生物会唱歌"></canvas>
+<div class="top">
+  <h1>发光的海底</h1>
+  <div class="right"><div class="btns"><button class="snd" id="fs" hidden>⛶ 全屏</button><button class="snd" id="snd" aria-pressed="true">♪ 声音开</button></div>
+  <div id="hint">滑一滑，游去更远更深的地方<br>点一点，听它们唱歌</div></div>
+</div>
+<div class="depth"><div class="track"><i id="dk"></i></div><span id="dv">水深 20 米</span></div>
+<div id="card"><b id="cn"></b><span id="cf"></span></div>
+<div class="bar"><div class="chips" id="chips"></div></div>
+
+<script>
+const TAU=Math.PI*2, rand=(a,b)=>a+Math.random()*(b-a), pick=a=>a[Math.random()*a.length|0];
+const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches, SPD=reduce?.4:1;
+const cv=document.getElementById('c'), ctx=cv.getContext('2d');
+const col=(h,l,a)=>`hsla(${h},100%,${l}%,${a})`;
+function seeded(s){let x=Math.sin(s)*1e4;return x-Math.floor(x)}
+
+let W,H,S,dpr,vig,WW=0,WH=0,cx=0,cy=0;
+let crit=[],decor=[],bubbles=[],sparks=[],rings=[],snow=[],notes=[];
+function floorY(x){const k=TAU*x/WW;return WH-S*(115+45*Math.sin(k*3)+28*Math.sin(k*7+1)+12*Math.sin(k*17+2))}
+function resize(){
+  dpr=Math.min(2,devicePixelRatio||1);W=innerWidth;H=innerHeight;
+  cv.width=W*dpr;cv.height=H*dpr;cv.style.width=W+'px';cv.style.height=H+'px';
+  S=Math.max(.8,Math.min(1.5,Math.min(W,H)/560));
+  const nWW=Math.round(W*6),nWH=Math.round(H*3.2);
+  if(WW){const fx=nWW/WW,fy=nWH/WH;
+    for(const o of [...crit,...bubbles,...sparks,...rings,...notes]){o.x*=fx;o.y*=fy}for(const d of decor)d.x*=fx;cx*=fx;cy*=fy}
+  WW=nWW;WH=nWH;cy=Math.max(0,Math.min(WH-H,cy));
+  vig=document.createElement('canvas');vig.width=W*dpr;vig.height=H*dpr;
+  const g=vig.getContext('2d');g.scale(dpr,dpr);const R=Math.hypot(W,H)/2;
+  const gr=g.createRadialGradient(W/2,H/2,Math.min(W,H)*.45,W/2,H/2,R*1.05);
+  gr.addColorStop(0,'rgba(0,0,0,0)');gr.addColorStop(1,'rgba(0,0,0,.6)');g.fillStyle=gr;g.fillRect(0,0,W,H);
+}
+resize();addEventListener('resize',resize);
+
+/* screen x of a world x, wrapping sideways forever */
+function SX(x,m=120){let d=((x-cx)%WW+WW)%WW;if(d>WW-m)d-=WW;return d}
+function wdist(ax,ay,bx,by){let dx=Math.abs(ax-bx)%WW;dx=Math.min(dx,WW-dx);return Math.hypot(dx,ay-by)}
+
+const glowCache={};
+function glowSprite(h){h=((Math.round(h/10)*10)%360+360)%360;if(glowCache[h])return glowCache[h];
+  const c=document.createElement('canvas');c.width=c.height=128;const g=c.getContext('2d');
+  const gr=g.createRadialGradient(64,64,0,64,64,64);gr.addColorStop(0,col(h,70,.5));gr.addColorStop(.35,col(h,60,.17));gr.addColorStop(1,col(h,50,0));
+  g.fillStyle=gr;g.fillRect(0,0,128,128);return glowCache[h]=c}
+function glow(x,y,r,h,a){ctx.globalAlpha=Math.max(0,Math.min(1,a));ctx.drawImage(glowSprite(h),x-r,y-r,r*2,r*2);ctx.globalAlpha=1}
+function capsule(x,y,w,h){const r=h/2;ctx.beginPath();ctx.moveTo(x+r,y);ctx.lineTo(x+w-r,y);ctx.arc(x+w-r,y+r,r,-Math.PI/2,Math.PI/2);ctx.lineTo(x+r,y+h);ctx.arc(x+r,y+r,r,Math.PI/2,Math.PI*1.5);ctx.closePath()}
+function body(fillA,h,l=55){ctx.fillStyle=col(h,l,fillA);ctx.fill();ctx.strokeStyle=col(h,80,.92);ctx.stroke()}
+
+/* ---------- swimmers ---------- */
+const TYPES={
+bacillus:{name:'杆菌',fact:'像一粒小胶囊，摇着尾巴上的鞭毛游泳。',hue:[175,200],speed:40,turn:1.4,size:[.9,1.2],r:22,draw(c,t){
+  const h=c.h;glow(0,0,60,h,.7+c.flash);
+  ctx.lineWidth=1.1;ctx.strokeStyle=col(h,78,.5);
+  for(let k=-1;k<=1;k++){ctx.beginPath();for(let i=0;i<=20;i++){const x=-16-i*2.2,y=k*4+Math.sin(i*.55-t*10+k)*(1+i*.22);i?ctx.lineTo(x,y):ctx.moveTo(x,y)}ctx.stroke()}
+  ctx.lineWidth=1.6;capsule(-17,-6.5,34,13);body(.32,h);
+  ctx.lineWidth=1.2;ctx.strokeStyle=col(h,88,.6);ctx.beginPath();
+  for(let i=0;i<=12;i++){const x=-9+i*1.5,y=Math.sin(i*1.3+t*2)*2;i?ctx.lineTo(x,y):ctx.moveTo(x,y)}ctx.stroke();
+}},
+coccus:{name:'链球菌',fact:'圆圆的小球手拉着手，排成一串一起走。',hue:[300,330],speed:22,turn:1,size:[.9,1.2],r:28,draw(c,t){
+  const h=c.h,n=4+(c.seed*7|0)%4;glow(0,0,n*11,h,.75+c.flash);ctx.lineWidth=1.3;
+  for(let i=0;i<n;i++){const x=(i-(n-1)/2)*9,y=Math.sin(i*.9-t*3)*3;
+    ctx.beginPath();ctx.arc(x,y,4.4,0,TAU);body(.35,h,60);
+    ctx.fillStyle=col(h,92,.8);ctx.beginPath();ctx.arc(x-1.2,y-1.2,1.1,0,TAU);ctx.fill()}
+}},
+spirillum:{name:'螺旋菌',fact:'身体像小弹簧，一边转圈一边往前钻。',hue:[60,90],speed:55,turn:1.6,size:[.9,1.2],r:26,draw(c,t){
+  const h=c.h;glow(0,0,52,h,.7+c.flash);
+  const path=()=>{ctx.beginPath();for(let i=0;i<=40;i++){const x=-26+i*1.3,y=Math.sin(i*.5-t*9)*5;i?ctx.lineTo(x,y):ctx.moveTo(x,y)}};
+  ctx.lineCap='round';path();ctx.lineWidth=4;ctx.strokeStyle=col(h,60,.6);ctx.stroke();path();ctx.lineWidth=1.2;ctx.strokeStyle=col(h,92,1);ctx.stroke();
+}},
+paramecium:{name:'草履虫',fact:'身上长满了小毛毛，大家一起划水，像一只小拖鞋。',hue:[155,175],speed:30,turn:.8,size:[1,1.3],r:36,draw(c,t){
+  const h=c.h,rx=34,ry=13;glow(0,0,72,h,.65+c.flash);
+  ctx.lineWidth=.8;ctx.strokeStyle=col(h,82,.55);ctx.beginPath();
+  for(let i=0;i<60;i++){const th=i/60*TAU,px=Math.cos(th)*rx,py=Math.sin(th)*ry;
+    let nx=Math.cos(th)/rx,ny=Math.sin(th)/ry;const m=Math.hypot(nx,ny);nx/=m;ny/=m;
+    const b=Math.sin(th*7-t*12)*.6,qx=nx*Math.cos(b)-ny*Math.sin(b),qy=nx*Math.sin(b)+ny*Math.cos(b);
+    ctx.moveTo(px,py);ctx.lineTo(px+qx*5.5,py+qy*5.5)}ctx.stroke();
+  ctx.lineWidth=1.4;ctx.beginPath();ctx.ellipse(0,0,rx,ry,0,0,TAU);body(.22,h,50);
+  ctx.strokeStyle=col(h,88,.5);ctx.beginPath();ctx.moveTo(14,-ry+2);ctx.quadraticCurveTo(4,-2,-4,2);ctx.stroke();
+  ctx.beginPath();ctx.ellipse(-3,2,8,4.5,.2,0,TAU);ctx.fillStyle=col(h+25,70,.35);ctx.fill();
+  for(const sx of[-21,21]){const r=2.4+Math.sin(t*3+sx)*1.1;ctx.beginPath();
+    for(let k=0;k<6;k++){const a=k/6*TAU;ctx.moveTo(sx,0);ctx.lineTo(sx+Math.cos(a)*r*2,Math.sin(a)*r*2)}ctx.stroke();
+    ctx.beginPath();ctx.arc(sx,0,r*.7,0,TAU);ctx.fillStyle=col(h,90,.6);ctx.fill()}
+  for(let i=0;i<6;i++){ctx.beginPath();ctx.arc(-14+seeded(c.seed+i)*28,-7+seeded(c.seed+i*3)*14,1.5,0,TAU);ctx.fillStyle=col(h+40,80,.5);ctx.fill()}
+}},
+amoeba:{name:'变形虫',fact:'没有固定的样子，伸出“假脚”慢慢挪。',hue:[260,285],speed:9,turn:.5,size:[1,1.35],r:38,draw(c,t){
+  const h=c.h,R=30,sd=c.seed;glow(0,0,80,h,.6+c.flash);
+  const blob=k=>{ctx.beginPath();for(let i=0;i<=56;i++){const th=i/56*TAU;
+    const r=R*k*(1+.17*Math.sin(3*th+t*.9+sd)+.1*Math.sin(5*th-t*1.3+sd*2)+.07*Math.sin(2*th+t*.5));
+    i?ctx.lineTo(Math.cos(th)*r,Math.sin(th)*r):ctx.moveTo(Math.cos(th)*r,Math.sin(th)*r)}ctx.closePath()};
+  ctx.lineWidth=1.5;blob(1);body(.2,h,55);blob(.68);ctx.fillStyle=col(h,65,.14);ctx.fill();
+  const nx=Math.sin(t*.3)*5,ny=Math.cos(t*.37)*4;ctx.beginPath();ctx.arc(nx,ny,6.5,0,TAU);ctx.lineWidth=1.1;body(.35,h+30,70);
+  for(let i=0;i<12;i++){const a=seeded(sd+i)*TAU+t*.2,d=8+seeded(sd+i*7)*14;ctx.beginPath();ctx.arc(Math.cos(a)*d,Math.sin(a)*d,1.2,0,TAU);ctx.fillStyle=col(h,85,.55);ctx.fill()}
+}},
+volvox:{name:'团藻',fact:'几百个小绿点组成一个球，肚子里还装着宝宝球。',hue:[105,135],speed:14,turn:.5,size:[1,1.4],r:40,draw(c,t){
+  const h=c.h,R=34,sp=t*.45;glow(0,0,90,h,.75+c.flash);
+  ctx.lineWidth=1;ctx.beginPath();ctx.arc(0,0,R,0,TAU);body(.1,h,50);
+  for(let k=0;k<4;k++){const a=k/4*TAU+sp*.6,z=Math.sin(a),x=Math.cos(a)*R*.45,y=(k%2?-1:1)*R*.18+z*4,r=7+z*1.5+k%2;
+    ctx.beginPath();ctx.arc(x,y,r,0,TAU);ctx.lineWidth=1;body(.3,h+12,62);
+    for(let j=0;j<5;j++){ctx.beginPath();ctx.arc(x+Math.cos(j*1.3+sp)*r*.55,y+Math.sin(j*1.3+sp)*r*.55,.9,0,TAU);ctx.fillStyle=col(h,92,.8);ctx.fill()}}
+  for(let i=0;i<110;i++){const y=1-2*(i+.5)/110,r=Math.sqrt(1-y*y),p=i*2.39996+sp,z=Math.sin(p);
+    ctx.beginPath();ctx.arc(Math.cos(p)*r*R,y*R,1+z*.5+.4,0,TAU);ctx.fillStyle=col(h,80,.25+(z+1)*.33);ctx.fill()}
+}},
+diatom:{name:'硅藻',fact:'住在一座玻璃做的小房子里，花纹特别漂亮。',hue:[38,52],speed:12,turn:.4,size:[1,1.3],r:30,draw(c,t){
+  const h=c.h;glow(0,0,62,h,.65+c.flash);ctx.lineWidth=1.3;
+  if(c.variant===0){ctx.rotate(t*.18);const R=22;
+    ctx.beginPath();ctx.arc(0,0,R,0,TAU);body(.14,h,55);
+    ctx.lineWidth=.7;ctx.strokeStyle=col(h,82,.45);ctx.beginPath();
+    for(let i=0;i<28;i++){const a=i/28*TAU;ctx.moveTo(Math.cos(a)*R*.38,Math.sin(a)*R*.38);ctx.lineTo(Math.cos(a)*R*.96,Math.sin(a)*R*.96)}ctx.stroke();
+    for(const k of[.38,.7]){ctx.beginPath();ctx.arc(0,0,R*k,0,TAU);ctx.stroke()}
+    for(let i=0;i<28;i++){const a=(i+.5)/28*TAU;ctx.beginPath();ctx.arc(Math.cos(a)*R*.84,Math.sin(a)*R*.84,.9,0,TAU);ctx.fillStyle=col(h,92,.8);ctx.fill()}
+    ctx.beginPath();ctx.arc(0,0,3,0,TAU);ctx.fillStyle=col(h,90,.7);ctx.fill();
+  }else{const rx=36,ry=8;ctx.beginPath();ctx.ellipse(0,0,rx,ry,0,0,TAU);body(.16,h,55);
+    ctx.lineWidth=.7;ctx.strokeStyle=col(h,85,.5);ctx.beginPath();
+    for(let x=-32;x<=32;x+=3){const yy=ry*Math.sqrt(1-(x/rx)**2)*.9;ctx.moveTo(x,-yy);ctx.lineTo(x,-1.5);ctx.moveTo(x,1.5);ctx.lineTo(x,yy)}ctx.stroke();
+    ctx.lineWidth=1;ctx.strokeStyle=col(h,92,.8);ctx.beginPath();ctx.moveTo(-28,0);ctx.lineTo(-3,0);ctx.moveTo(3,0);ctx.lineTo(28,0);ctx.stroke();
+    ctx.beginPath();ctx.arc(0,0,2,0,TAU);ctx.fillStyle=col(h,92,.9);ctx.fill()}
+}},
+phage:{name:'噬菌体',fact:'长得像一艘登月小飞船，专门去找细菌。',hue:[330,350],speed:20,turn:.9,size:[.9,1.2],r:30,draw(c,t){
+  const h=c.h;glow(4,0,58,h,.7+c.flash);ctx.lineWidth=1.3;ctx.lineJoin='round';
+  ctx.beginPath();for(let i=0;i<6;i++){const a=i/6*TAU;ctx.lineTo(16+Math.cos(a)*10,Math.sin(a)*10)}ctx.closePath();body(.28,h,55);
+  ctx.strokeStyle=col(h+20,88,.55);ctx.lineWidth=.8;ctx.beginPath();
+  for(let i=0;i<=30;i++){const a=i*.7+t,r=1.5+i*.2;const x=16+Math.cos(a)*r,y=Math.sin(a)*r;i?ctx.lineTo(x,y):ctx.moveTo(x,y)}ctx.stroke();
+  ctx.lineWidth=1.2;ctx.beginPath();ctx.rect(3,-3,3,6);body(.4,h,60);
+  ctx.beginPath();ctx.rect(-14,-2.4,17,4.8);body(.3,h,60);
+  ctx.strokeStyle=col(h,85,.6);ctx.lineWidth=.6;ctx.beginPath();for(let x=-12;x<3;x+=2.5){ctx.moveTo(x,-2.4);ctx.lineTo(x,2.4)}ctx.stroke();
+  ctx.lineWidth=1.6;ctx.strokeStyle=col(h,82,.9);ctx.beginPath();ctx.moveTo(-15,-6);ctx.lineTo(-15,6);ctx.stroke();
+  ctx.lineWidth=1.1;ctx.beginPath();
+  for(const s of[-1,1])for(let k=0;k<3;k++){const w=Math.sin(t*4+k+s)*2,y0=s*(2+k*1.8);
+    ctx.moveTo(-15,y0);ctx.lineTo(-21-k*1.5,y0+s*(7+w));ctx.lineTo(-27-k*2,y0+s*(3+w*.5))}ctx.stroke();
+}},
+tardigrade:{name:'水熊虫',fact:'有八条胖胖的小短腿，在海底慢慢散步，很冷很干都不怕。',hue:[18,32],speed:10,turn:0,size:[1.1,1.4],r:34,upright:true,floor:true,draw(c,t){
+  const h=c.h;glow(2,0,70,h,.6+c.flash);ctx.lineCap='round';
+  [-17,-6,5,15].forEach((x,i)=>{const sw=Math.sin(t*5+i*1.6)*3.5;
+    ctx.lineWidth=5.5;ctx.strokeStyle=col(h,62,.45);ctx.beginPath();ctx.moveTo(x,5);ctx.lineTo(x+sw,13);ctx.stroke();
+    ctx.lineWidth=.8;ctx.strokeStyle=col(h,90,.8);ctx.beginPath();for(const d of[-1.8,0,1.8]){ctx.moveTo(x+sw+d,15.5);ctx.lineTo(x+sw+d*1.6,18)}ctx.stroke()});
+  ctx.lineWidth=1.5;ctx.beginPath();ctx.ellipse(0,-1,25,11.5,0,0,TAU);body(.28,h,60);
+  ctx.beginPath();ctx.arc(22,-1,9,0,TAU);body(.28,h,60);
+  ctx.beginPath();ctx.ellipse(-.5,-1,24.25,10.75,0,0,TAU);ctx.fillStyle=col(h,60,.2);ctx.fill();
+  ctx.lineWidth=.8;ctx.strokeStyle=col(h,85,.35);ctx.beginPath();for(const x of[-12,-2,8]){ctx.moveTo(x,-11);ctx.quadraticCurveTo(x+2,-1,x,9)}ctx.stroke();
+  ctx.beginPath();ctx.arc(24.5,-4.5,1.9,0,TAU);ctx.fillStyle='#04121a';ctx.fill();
+  ctx.beginPath();ctx.arc(25,-5,.6,0,TAU);ctx.fillStyle='#fff';ctx.fill();
+  ctx.lineWidth=1.2;ctx.beginPath();ctx.arc(30,0,2.3,0,TAU);ctx.strokeStyle=col(h,88,.85);ctx.stroke();
+  ctx.beginPath();ctx.arc(19,1.5,2,0,TAU);ctx.fillStyle=col(350,80,.35);ctx.fill();
+}},
+euglena:{name:'眼虫',fact:'头上有一个红色的小眼点，能找到太阳光。',hue:[88,110],speed:32,turn:1.1,size:[.95,1.25],r:26,draw(c,t){
+  const h=c.h;glow(0,0,56,h,.65+c.flash);
+  ctx.lineWidth=1;ctx.strokeStyle=col(h,88,.7);ctx.beginPath();
+  for(let i=0;i<=26;i++){const x=18+i*1.6,y=Math.sin(i*.45-t*12)*i*.2;i?ctx.lineTo(x,y):ctx.moveTo(x,y)}ctx.stroke();
+  const m=Math.sin(t*2)*.12;ctx.save();ctx.scale(1+m,1-m);
+  ctx.beginPath();ctx.moveTo(-22,0);ctx.bezierCurveTo(-10,-9,10,-11,18,0);ctx.bezierCurveTo(10,11,-10,9,-22,0);ctx.lineWidth=1.4;body(.26,h,55);
+  for(let i=0;i<8;i++){ctx.beginPath();ctx.ellipse(-12+i*3.3,(i%2?2.5:-2.5)*(1-Math.abs(i-3.5)/6),2.2,1.2,i,0,TAU);ctx.fillStyle=col(h,72,.55);ctx.fill()}
+  ctx.restore();glow(13,-3,9,0,.9);ctx.beginPath();ctx.arc(13,-3,2.2,0,TAU);ctx.fillStyle='hsla(2,100%,62%,.95)';ctx.fill();
+}},
+noctiluca:{name:'夜光藻',fact:'被碰一下就会亮起蓝光，海边的“蓝眼泪”就是它们。',hue:[195,210],speed:10,turn:.4,size:[1,1.3],r:24,draw(c,t){
+  const h=c.h,f=c.flash,tw=.12+.08*Math.sin(t*1.7+c.seed),b=Math.min(1,tw+f);
+  glow(0,0,40+f*110,h,.35+f*1.4);
+  ctx.lineWidth=1.2;ctx.strokeStyle=col(h,70+b*25,.3+b*.6);ctx.beginPath();
+  for(let i=0;i<=16;i++){const x=-16-i*1.4,y=Math.sin(i*.4-t*3)*i*.35;i?ctx.lineTo(x,y):ctx.moveTo(x,y)}ctx.stroke();
+  ctx.beginPath();ctx.arc(0,0,17,0,TAU);ctx.fillStyle=col(h,60+b*30,.08+b*.35);ctx.fill();ctx.lineWidth=1.2;ctx.strokeStyle=col(h,75+b*20,.35+b*.6);ctx.stroke();
+  ctx.lineWidth=.7;ctx.beginPath();
+  for(let i=0;i<9;i++){const a=i/9*TAU+c.seed,r=13+seeded(c.seed+i)*3;ctx.moveTo(-4,1);ctx.quadraticCurveTo(Math.cos(a+.4)*r*.5-4,Math.sin(a+.4)*r*.5,Math.cos(a)*r,Math.sin(a)*r)}ctx.stroke();
+  ctx.beginPath();ctx.arc(-4,1,3,0,TAU);ctx.fillStyle=col(h,85,.3+b*.6);ctx.fill();
+}},
+jelly:{name:'水母',fact:'一缩一放地往前游，身体几乎是透明的，像一盏会飘的小灯。',hue:[180,320],speed:26,turn:.3,size:[1.1,1.7],r:40,pulse:true,draw(c,t){
+  const h=c.h,p=Math.sin(t*2.5),bx=14*(1-p*.14),by=20*(1+p*.1);glow(-6,0,95,h,.6+c.flash);
+  ctx.lineWidth=.9;ctx.strokeStyle=col(h+20,82,.45);ctx.beginPath();
+  for(let k=0;k<7;k++){const y0=(k-3)/3*by*.85;ctx.moveTo(-3,y0);
+    for(let i=1;i<=24;i++){const x=-3-i*2.6,y=y0*(1-i*.012)+Math.sin(i*.32-t*4+k*1.3)*(1.5+i*.18);ctx.lineTo(x,y)}}ctx.stroke();
+  ctx.lineWidth=2.4;ctx.strokeStyle=col(h,72,.4);ctx.beginPath();
+  for(const s of[-1,1]){ctx.moveTo(-2,s*3);for(let i=1;i<=14;i++)ctx.lineTo(-2-i*2.4,s*3+Math.sin(i*.6-t*3+s)*3.5)}ctx.stroke();
+  ctx.lineWidth=1.5;ctx.beginPath();ctx.ellipse(0,0,bx,by,0,-Math.PI/2,Math.PI/2);ctx.quadraticCurveTo(-6,0,0,-by);body(.2,h,60);
+  ctx.lineWidth=.7;ctx.strokeStyle=col(h,90,.45);ctx.beginPath();
+  for(let k=-2;k<=2;k++){ctx.moveTo(-1,k*by*.22);ctx.quadraticCurveTo(bx*.6,k*by*.3,bx*.92,k*by*.36)}ctx.stroke();
+  ctx.beginPath();ctx.ellipse(bx*.35,0,bx*.25,by*.3,0,0,TAU);ctx.fillStyle=col(h+30,85,.3+c.flash*.4);ctx.fill();
+  for(let k=-4;k<=4;k++){const a=k/4*Math.PI/2*.95;ctx.beginPath();ctx.arc(Math.cos(a)*bx*.98,Math.sin(a)*by*.98,1,0,TAU);ctx.fillStyle=col(h,95,.9);ctx.fill()}
+}}
+};
+const KEYS=Object.keys(TYPES);
+
+/* ---------- seafloor plants ---------- */
+const DECOR={
+kelp:{name:'海带',fact:'海里长长的森林，跟着水流轻轻摇摆。'},
+anemone:{name:'海葵',fact:'像一朵会动的花，碰一下就会把触手缩起来。'},
+coral:{name:'珊瑚',fact:'是很多很小很小的小动物，一起盖起来的房子。'}
+};
+function makeCoral(sd){const segs=[];let n=0;
+  (function br(x,y,a,len,d){const x2=x+Math.cos(a)*len,y2=y+Math.sin(a)*len;segs.push([x,y,x2,y2,d]);
+    if(d<4){const k=2+(seeded(sd+n++)*1.6|0);for(let i=0;i<k;i++)br(x2,y2,a+(seeded(sd+n++*3.1)-.5)*1.3,len*(.68+seeded(sd+n)*.12),d+1)}})(0,0,-Math.PI/2,24,0);
+  return segs}
+function buildDecor(){decor=[];let x=rand(0,40);
+  while(x<WW-40){const r=Math.random(),type=r<.36?'kelp':r<.68?'anemone':'coral';
+    const h=type==='kelp'?rand(125,170):type==='anemone'?pick([300,325,20,45]):pick([350,15,35,185,275]);
+    const sd=Math.random()*1000;
+    decor.push({type,T:DECOR[type],x,h,s:rand(.8,1.25),seed:sd,flash:0,n:10+(Math.random()*8|0),segs:type==='coral'?makeCoral(sd):null,top:-60});
+    x+=rand(45,105)*S}}
+const DRAWD={
+kelp(d,t){const h=d.h,f=d.flash;let x=0,y=0;const pts=[[0,0,-Math.PI/2]];
+  for(let i=0;i<d.n;i++){const a=-Math.PI/2+Math.sin(t*1.1-i*.33+d.seed)*.045*i;x+=Math.cos(a)*18;y+=Math.sin(a)*18;pts.push([x,y,a])}
+  d.top=y;
+  ctx.lineCap='round';ctx.lineWidth=2.6;ctx.strokeStyle=col(h,70+f*20,.7);ctx.beginPath();pts.forEach((p,i)=>i?ctx.lineTo(p[0],p[1]):ctx.moveTo(0,0));ctx.stroke();
+  ctx.lineWidth=1;
+  for(let i=1;i<pts.length;i++){const [px,py,a]=pts[i],s=i%2?1:-1,la=a+s*(.9+Math.sin(t*1.5+i)*.15),L=15-i*.3;
+    ctx.save();ctx.translate(px,py);ctx.rotate(la);ctx.beginPath();ctx.ellipse(L/2,0,L/2,3.6,0,0,TAU);
+    ctx.fillStyle=col(h,55+f*25,.18+f*.3);ctx.fill();ctx.strokeStyle=col(h,80,.6);ctx.stroke();ctx.restore()}
+  glow(x,y,26,h,.5+f);glow(pts[pts.length>>1][0],pts[pts.length>>1][1],34,h,.25+f*.8);
+  ctx.beginPath();ctx.arc(x,y,2.4,0,TAU);ctx.fillStyle=col(h,92,.95);ctx.fill();
+},
+anemone(d,t){const h=d.h,f=d.flash,shrink=1-f*.55;d.top=-44;
+  glow(0,-20,58,h,.45+f);
+  ctx.lineWidth=1.4;ctx.beginPath();ctx.moveTo(-11,0);ctx.lineTo(-7,-16);ctx.lineTo(7,-16);ctx.lineTo(11,0);ctx.closePath();body(.28,h,50);
+  ctx.lineCap='round';
+  for(let i=0;i<16;i++){const a=-Math.PI+(i+.5)/16*Math.PI,L=(22+(i%3)*5)*shrink,sw=Math.sin(t*1.6+i*.5+d.seed)*6*shrink;
+    const ex=Math.cos(a)*L,ey=-16+Math.sin(a)*L,mx=Math.cos(a)*L*.5-Math.sin(a)*sw,my=-16+Math.sin(a)*L*.5+Math.cos(a)*sw;
+    ctx.lineWidth=2.2;ctx.strokeStyle=col(h,68,.65);ctx.beginPath();ctx.moveTo(0,-16);ctx.quadraticCurveTo(mx,my,ex,ey);ctx.stroke();
+    glow(ex,ey,7,h,.6+f);ctx.beginPath();ctx.arc(ex,ey,2,0,TAU);ctx.fillStyle=col(h,92,.95);ctx.fill()}
+},
+coral(d,t){const h=d.h,f=d.flash;d.top=-70;ctx.rotate(Math.sin(t*.7+d.seed)*.03);
+  glow(0,-35,75,h,.4+f);ctx.lineCap='round';
+  for(const [x1,y1,x2,y2,k] of d.segs){ctx.lineWidth=5.5-k*1.05;ctx.strokeStyle=col(h,62+f*25,.7);ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke()}
+  for(const [,,x2,y2,k] of d.segs)if(k===4){glow(x2,y2,7,h,.5+f+.2*Math.sin(t*2+x2));ctx.beginPath();ctx.arc(x2,y2,1.8,0,TAU);ctx.fillStyle=col(h,92,.95);ctx.fill()}
+}};
+
+/* ---------- populate ---------- */
+function make(type,x,y){const T=TYPES[type];return{type,T,x,y,a:Math.random()*TAU,v:T.speed*rand(.75,1.25),h:rand(...T.hue),
+  s:rand(...T.size),t:Math.random()*100,flash:0,flashIn:-1,seed:Math.random()*1000,variant:Math.random()<.5?0:1,born:0,dir:Math.random()<.5?1:-1,sx:0,sy:0,vis:false}}
+function add(type,x,y){if(crit.length>=240)crit.splice(crit.findIndex(c=>!c.vis),1);const c=make(type,((x%WW)+WW)%WW,y);crit.push(c);return c}
+function spotY(type){const lo=60,hi=WH-230*S;
+  if(type==='noctiluca')return rand(lo,lo+(hi-lo)*.45);
+  if(type==='jelly')return rand(lo+(hi-lo)*.2,hi);
+  if(type==='tardigrade')return WH;return rand(lo,hi)}
+buildDecor();
+const DENS=Math.max(1.6,Math.min(3.6,(W*H)/(420*860)*1.2));
+KEYS.forEach(k=>{const n=Math.round((k==='jelly'?7:k==='tardigrade'?5:k==='noctiluca'?7:4)*DENS);for(let i=0;i<n;i++){const c=add(k,rand(0,WW),spotY(k));c.born=1}});
+crit.forEach(c=>{if(c.T.floor)c.y=floorY(c.x)-17*c.s*S;if(c.T.pulse)c.a=-Math.PI/2+rand(-.6,.6)});
+for(let i=0;i<80;i++){const x=rand(0,WW);bubbles.push({x,y:rand(0,WH),r:rand(1.5,4.5),v:rand(18,40),p:Math.random()*TAU})}
+for(let i=0;i<90;i++)snow.push({x:Math.random(),y:Math.random(),z:rand(.3,1),p:Math.random()*TAU});
+cx=rand(0,WW);cy=H*.25;
+
+function burst(x,y,h,n){for(let i=0;i<n;i++){const a=Math.random()*TAU,v=rand(15,70);sparks.push({x,y,vx:Math.cos(a)*v,vy:Math.sin(a)*v,life:1,d:rand(.6,1.4),h:h+rand(-15,15)})}}
+function excite(x,y){for(const c of crit)if(c.type==='noctiluca'){const d=wdist(c.x,c.y,x,y);if(d<300*S)c.flashIn=d/(420*S)}}
+
+/* ---------- sound: pentatonic, higher on screen = higher note ---------- */
+let AC=null,master=null,soundOn=true;
+function audio(){
+  if(!AC){const A=window.AudioContext||window.webkitAudioContext;if(!A)return null;AC=new A();
+    master=AC.createGain();master.gain.value=.5;
+    const dl=AC.createDelay(),fb=AC.createGain(),wet=AC.createGain(),lp=AC.createBiquadFilter();
+    dl.delayTime.value=.3;fb.gain.value=.36;wet.gain.value=.4;lp.type='lowpass';lp.frequency.value=2400;
+    master.connect(AC.destination);master.connect(dl);dl.connect(lp);lp.connect(fb);fb.connect(dl);lp.connect(wet);wet.connect(AC.destination)}
+  if(AC.state==='suspended')AC.resume();return AC}
+function tone(f,when,o){const a=AC,t=a.currentTime+when,os=a.createOscillator(),g=a.createGain();
+  os.type=o.w||'sine';os.frequency.setValueAtTime(f,t);
+  if(o.slide)os.frequency.exponentialRampToValueAtTime(f*o.slide,t+o.d*.8);
+  if(o.vib){const l=a.createOscillator(),lg=a.createGain();l.frequency.value=o.vib;lg.gain.value=f*.03;l.connect(lg);lg.connect(os.frequency);l.start(t);l.stop(t+o.d+.1)}
+  g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(o.g||.3,t+(o.a||.005));g.gain.exponentialRampToValueAtTime(.0001,t+o.d);
+  os.connect(g);g.connect(master);os.start(t);os.stop(t+o.d+.05)}
+const PENTA=[0,2,4,7,9];
+const freqAt=(d,oct)=>261.63*Math.pow(2,(PENTA[d%5]+12*Math.floor(d/5)+12*oct)/12);
+const VOICES={
+  bacillus:d=>tone(freqAt(d,0),0,{w:'triangle',d:.5,g:.32}),
+  coccus:(d,c)=>{const n=4+(c.seed*7|0)%4;for(let i=0;i<n;i++)tone(freqAt(d+i,1),i*.07,{d:.25,g:.2})},
+  spirillum:d=>tone(freqAt(d,0),0,{d:.6,g:.25,slide:2,vib:9}),
+  paramecium:d=>{tone(freqAt(d,0),0,{w:'triangle',d:.7,g:.25,a:.03});tone(freqAt(d+2,0),.12,{w:'triangle',d:.6,g:.18,a:.03})},
+  amoeba:d=>tone(freqAt(d,-1),0,{d:1.2,g:.42,a:.12,vib:3}),
+  volvox:d=>[0,2,4].forEach((k,i)=>tone(freqAt(d+k,0),i*.03,{d:1.4,g:.16})),
+  diatom:d=>{const f=freqAt(d,1);tone(f,0,{d:1.3,g:.22});tone(f*2.76,0,{d:.5,g:.06})},
+  phage:d=>{tone(freqAt(d,0),0,{w:'square',d:.12,g:.07});tone(freqAt(d+3,0),.13,{w:'square',d:.16,g:.07})},
+  tardigrade:d=>tone(freqAt(d,-1)*1.5,0,{w:'triangle',d:.45,g:.4,slide:.5}),
+  euglena:d=>tone(freqAt(d,1),0,{d:.45,g:.25}),
+  noctiluca:d=>[0,1,2].forEach(i=>tone(freqAt(d+i*2,2),i*.06,{d:.8,g:.1})),
+  jelly:d=>tone(freqAt(d,0),0,{d:1.3,g:.26,a:.06,slide:1.5,vib:5}),
+  kelp:d=>{tone(freqAt(d,-1),0,{w:'triangle',d:1.1,g:.3,a:.08});tone(freqAt(d+4,-1),.2,{w:'triangle',d:1,g:.18,a:.08})},
+  anemone:d=>[0,1,2,3].forEach(i=>tone(freqAt(d+3-i,1),i*.05,{d:.35,g:.13})),
+  coral:d=>{const f=freqAt(d,1);tone(f,0,{d:1.5,g:.2});tone(f*2.76,0,{d:.6,g:.05});tone(freqAt(d+2,1),.15,{d:1.2,g:.12})}
+};
+function sing(c,soft){
+  if(!soundOn||!audio())return;
+  const d=Math.max(0,Math.min(9,Math.floor((1-c.sy/H)*10)));
+  if(soft)tone(freqAt(d,2),0,{d:.6,g:.05});else VOICES[c.type](d,c);
+  notes.push({x:c.x,y:c.y-(c.T.r?c.T.r*c.s*S*.6:-c.top*c.s*S),life:1,h:c.h,g:Math.random()<.5?'♪':'♫',p:Math.random()*TAU,sz:soft?.6:1})}
+const snd=document.getElementById('snd');
+snd.onclick=()=>{soundOn=!soundOn;snd.setAttribute('aria-pressed',soundOn);snd.textContent=soundOn?'♪ 声音开':'♪ 声音关';if(soundOn)audio()};
+/* fullscreen (iPad Safari / desktop); hidden where the browser can't do it */
+const fsb=document.getElementById('fs'),root=document.documentElement;
+const fsEl=()=>document.fullscreenElement||document.webkitFullscreenElement;
+const canFS=!!(root.requestFullscreen||root.webkitRequestFullscreen)&&(document.fullscreenEnabled!==false||document.webkitFullscreenEnabled);
+const standalone=navigator.standalone||matchMedia('(display-mode: standalone)').matches;
+if(canFS&&!standalone)fsb.hidden=false;
+fsb.onclick=()=>{try{
+  if(fsEl()){(document.exitFullscreen||document.webkitExitFullscreen).call(document)}
+  else{const r=(root.requestFullscreen||root.webkitRequestFullscreen).call(root);if(r&&r.catch)r.catch(()=>{fsb.hidden=true})}
+}catch(e){fsb.hidden=true}};
+const fsSync=()=>{fsb.textContent=fsEl()?'⛶ 退出全屏':'⛶ 全屏';setTimeout(resize,60)};
+document.addEventListener('fullscreenchange',fsSync);document.addEventListener('webkitfullscreenchange',fsSync);
+document.addEventListener('gesturestart',e=>e.preventDefault());
+
+/* ---------- card ---------- */
+const card=document.getElementById('card'),cn=document.getElementById('cn'),cf=document.getElementById('cf');
+let focus=null,focusT=0;
+function show(c){focus=c;focusT=3.5;cn.textContent=c.T.name;cn.style.color=`hsl(${c.h},100%,78%)`;cf.textContent=c.T.fact;card.style.opacity=1}
+function placeCard(){if(!focus)return;if(!focus.vis){card.style.opacity=0;return}card.style.opacity=1;
+  const top=focus.T.r?focus.sy-focus.T.r*focus.s*S:focus.sy+focus.top*focus.s*S,bot=focus.T.r?focus.sy+focus.T.r*focus.s*S:focus.sy;
+  const cw=card.offsetWidth,ch=card.offsetHeight;let x=focus.sx-cw/2,y=top-ch-12;if(y<70)y=bot+12;
+  x=Math.max(12,Math.min(W-cw-12,x));y=Math.max(12,Math.min(H-ch-80,y));card.style.transform=`translate(${x}px,${y}px)`}
+
+/* ---------- touch: drag to swim around, tap to sing ---------- */
+let hinted=false,drag=null,vx=0,vy=0;
+function unhint(){if(!hinted){hinted=true;setTimeout(()=>document.getElementById('hint').style.opacity=0,2500)}}
+function tap(sx,sy){
+  const x=((cx+sx)%WW+WW)%WW,y=cy+sy;let best=null,bd=1e9;
+  for(const c of crit){if(!c.vis)continue;const d=Math.hypot(c.sx-sx,c.sy-sy);if(d<Math.max(34,c.T.r*c.s*S*1.2)&&d<bd){bd=d;best=c}}
+  if(!best)for(const d of decor){if(!d.vis)continue;const top=d.sy+d.top*d.s*S;
+    if(Math.abs(d.sx-sx)<34*S*d.s&&sy>top-20&&sy<d.sy+10){best=d;break}}
+  rings.push({x,y,r:0,life:1,h:best?best.h:195});excite(x,y);
+  if(best){best.flash=1;if(best.T.r)best.a+=rand(-1,1);show(best);burst(best.T.r?best.x:x,best.T.r?best.y:y,best.h,14);sing(best)}
+  else{const k=pick(KEYS),c=add(k,x,k==='tardigrade'?y:Math.min(y,floorY(x)-40*S));c.sx=sx;c.sy=sy;c.vis=true;c.flash=1;show(c);burst(x,y,c.h,22);sing(c)}
+}
+cv.addEventListener('pointerdown',e=>{if(drag)return;audio&&soundOn&&audio();
+  drag={id:e.pointerId,x0:e.clientX,y0:e.clientY,lx:e.clientX,ly:e.clientY,lt:performance.now(),moved:false};vx=vy=0;cv.setPointerCapture(e.pointerId)});
+cv.addEventListener('pointermove',e=>{if(!drag||e.pointerId!==drag.id)return;
+  const dx=e.clientX-drag.lx,dy=e.clientY-drag.ly,now=performance.now(),dt=Math.max(1,now-drag.lt)/1000;
+  if(!drag.moved&&Math.hypot(e.clientX-drag.x0,e.clientY-drag.y0)>9){drag.moved=true;cv.style.cursor='grabbing'}
+  if(drag.moved){cx-=dx;cy=Math.max(0,Math.min(WH-H,cy-dy));vx=vx*.5+(-dx/dt)*.5;vy=vy*.5+(-dy/dt)*.5}
+  drag.lx=e.clientX;drag.ly=e.clientY;drag.lt=now});
+function endDrag(e,cancel){if(!drag||e.pointerId!==drag.id)return;
+  if(!drag.moved&&!cancel)tap(e.clientX,e.clientY);else{unhint();if(performance.now()-drag.lt>90)vx=vy=0}
+  drag=null;cv.style.cursor='grab'}
+cv.addEventListener('pointerup',e=>endDrag(e,false));
+cv.addEventListener('pointercancel',e=>endDrag(e,true));
+
+const chips=document.getElementById('chips');
+KEYS.forEach(k=>{const T=TYPES[k],b=document.createElement('button');b.className='chip';b.id='chip-'+k;
+  const hm=(T.hue[0]+T.hue[1])/2;b.innerHTML=`<span class="dot" style="background:hsl(${hm},100%,65%);box-shadow:0 0 10px hsl(${hm},100%,60%)"></span>${T.name}`;
+  b.onclick=()=>{const sx=rand(.25,.75)*W,sy=rand(.3,.6)*H,x=cx+sx,y=k==='tardigrade'?cy+sy:Math.min(cy+sy,floorY(x)-50*S);
+    const c=add(k,x,y);c.sx=sx;c.sy=y-cy;c.vis=true;c.flash=1;if(c.T.pulse)c.a=-Math.PI/2;show(c);burst(c.x,c.y,c.h,26);excite(c.x,c.y);sing(c)};
+  chips.appendChild(b)});
+
+/* ---------- scenery ---------- */
+const STOPS=[[0,[16,92,108]],[.3,[6,50,66]],[.65,[2,22,30]],[1,[1,5,9]]];
+function depthCol(t){t=Math.max(0,Math.min(1,t));for(let i=1;i<STOPS.length;i++)if(t<=STOPS[i][0]){const[a0,c0]=STOPS[i-1],[a1,c1]=STOPS[i],k=(t-a0)/(a1-a0);
+  return`rgb(${c0.map((v,j)=>Math.round(v+(c1[j]-v)*k)).join(',')})`}return'rgb(1,5,9)'}
+function drawScenery(now){
+  const g=ctx.createLinearGradient(0,0,0,H);g.addColorStop(0,depthCol(cy/WH));g.addColorStop(1,depthCol((cy+H)/WH));
+  ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+  ctx.globalCompositeOperation='lighter';
+  const ra=Math.max(0,1-cy/(H*1.5));
+  if(ra>0){const span=W*1.8;for(let i=0;i<7;i++){const top=-cy,len=H*1.7,w0=18+(i%3)*16,w1=w0*3.2,sk=len*.3;
+    const x0=((i*W*.29+Math.sin(now/3200+i)*24-cx*.3)%span+span)%span-W*.4;
+    const gr=ctx.createLinearGradient(0,top,0,top+len);gr.addColorStop(0,`rgba(170,240,255,${.15*ra})`);gr.addColorStop(1,'rgba(170,240,255,0)');
+    ctx.fillStyle=gr;ctx.beginPath();ctx.moveTo(x0,top);ctx.lineTo(x0+w0,top);ctx.lineTo(x0+w0+sk+w1,top+len);ctx.lineTo(x0+sk,top+len);ctx.fill()}}
+  if(cy<40){ctx.lineWidth=2;ctx.strokeStyle='rgba(190,250,255,.35)';ctx.beginPath();
+    for(let x=0;x<=W;x+=10){const y=-cy+6+Math.sin((x+cx)*.03+now/600)*3;x?ctx.lineTo(x,y):ctx.moveTo(x,y)}ctx.stroke()}
+  for(const p of snow){p.y-=.000006*p.z*16;const x=((p.x*W-cx*p.z*.4+Math.sin(now/4000+p.p)*8)%W+W)%W,y=((p.y*H-cy*p.z*.4)%H+H)%H;
+    ctx.fillStyle=`rgba(150,220,235,${.07+p.z*.12})`;ctx.fillRect(x,y,p.z*1.6,p.z*1.6)}
+  ctx.globalCompositeOperation='source-over';
+  ctx.drawImage(vig,0,0,W,H);
+}
+function drawFloor(){
+  const minF=WH-S*200-cy;if(minF>H)return;
+  ctx.beginPath();ctx.moveTo(0,H);for(let x=0;x<=W+8;x+=8)ctx.lineTo(x,floorY(cx+x)-cy);ctx.lineTo(W,H);ctx.closePath();
+  const g=ctx.createLinearGradient(0,minF,0,WH-cy);g.addColorStop(0,'rgb(4,18,22)');g.addColorStop(1,'rgb(1,6,8)');ctx.fillStyle=g;ctx.fill();
+  ctx.globalCompositeOperation='lighter';ctx.lineWidth=2;ctx.strokeStyle='hsla(185,90%,60%,.22)';ctx.beginPath();
+  for(let x=0;x<=W+8;x+=8){const y=floorY(cx+x)-cy;x?ctx.lineTo(x,y):ctx.moveTo(x,y)}ctx.stroke();
+  for(let i=0;i<40;i++){const wx=Math.floor((cx)/37)*37+i*37,x=wx-cx,y=floorY(wx)-cy+8+seeded(wx)*30,tw=.25+.25*Math.sin(performance.now()/700+wx);
+    if(seeded(wx*1.7)<.35){ctx.fillStyle=`hsla(${170+seeded(wx*3)*60},100%,75%,${tw})`;ctx.fillRect(x,y,1.6,1.6)}}
+  ctx.globalCompositeOperation='source-over';
+}
+
+/* ---------- loop ---------- */
+const dk=document.getElementById('dk'),dv=document.getElementById('dv');let lastDepth=-1;
+let last=performance.now(),T=0;
+function steer(c,target,k,dt){c.a+=Math.sin(target-c.a)*k*dt}
+function frame(now){
+  const rdt=Math.min(.05,(now-last)/1000),dt=rdt*SPD;last=now;T+=dt;
+  if(!drag){cx+=vx*rdt;cy+=vy*rdt;const f=Math.pow(.04,rdt);vx*=f;vy*=f;if(Math.abs(vx)<2)vx=0;if(Math.abs(vy)<2)vy=0}
+  cy=Math.max(0,Math.min(WH-H,cy));if(cy<=0||cy>=WH-H)vy=0;cx=((cx%WW)+WW)%WW;
+
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  drawScenery(now);drawFloor();
+  ctx.globalCompositeOperation='lighter';
+
+  for(const d of decor){d.flash=Math.max(0,d.flash-dt*.8);const sx=SX(d.x),base=floorY(d.x)-cy+4;
+    d.vis=sx>-60&&sx<W+60&&base>-10&&base+(d.top-40)*S*d.s<H+10;d.sx=sx;d.sy=base;d.y=base+cy;if(!d.vis)continue;
+    ctx.save();ctx.translate(sx,base);ctx.scale(S*d.s,S*d.s);DRAWD[d.type](d,T);ctx.restore()}
+
+  for(const b of bubbles){b.y-=b.v*S*dt;b.x+=Math.sin(T*1.5+b.p)*dt*8;if(b.y<0){b.x=rand(0,WW);b.y=floorY(b.x)-4}
+    const sx=SX(b.x),sy=b.y-cy;if(sx<-10||sx>W+10||sy<-10||sy>H+10)continue;
+    ctx.lineWidth=1;ctx.strokeStyle='rgba(170,240,255,.38)';ctx.beginPath();ctx.arc(sx,sy,b.r*S,0,TAU);ctx.stroke();
+    ctx.fillStyle='rgba(220,255,255,.5)';ctx.fillRect(sx-b.r*S*.4,sy-b.r*S*.45,1.2,1.2)}
+
+  for(const c of crit){const Tp=c.T;c.t+=dt;c.born=Math.min(1,c.born+dt*1.6);
+    const boost=1+c.flash*1.5;
+    if(Tp.floor){const fy=floorY(c.x)-17*c.s*S;
+      if(c.y<fy-1){c.y=Math.min(fy,c.y+70*S*dt);c.a=c.dir>0?0:Math.PI}
+      else{c.x+=c.dir*c.v*S*dt*boost;c.y=floorY(c.x)-17*c.s*S;const sl=Math.atan2(floorY(c.x+6)-floorY(c.x-6),12);c.a=c.dir>0?sl:sl+Math.PI;if(Math.random()<dt*.04)c.dir*=-1}}
+    else{
+      c.a+=(Math.sin(c.t*.7+c.seed)+.6*Math.sin(c.t*.23+c.seed*2))*Tp.turn*dt;
+      if(Tp.pulse)steer(c,-Math.PI/2,.35,dt);
+      const fl=floorY(c.x);if(c.y<70)steer(c,Math.PI/2,2.5,dt);if(c.y>fl-70*S)steer(c,-Math.PI/2,2.5,dt);
+      const pv=Tp.pulse?(.25+1.5*Math.max(0,Math.sin(c.t*2.5))):1;
+      c.x+=Math.cos(c.a)*c.v*S*dt*boost*pv;c.y+=Math.sin(c.a)*c.v*S*dt*boost*pv;
+      c.y=Math.max(30,Math.min(fl-30*S,c.y))}
+    c.x=((c.x%WW)+WW)%WW;
+    if(c.flashIn>=0){c.flashIn-=dt;if(c.flashIn<0){c.flash=1;burst(c.x,c.y,c.h,8);if(c.vis)sing(c,true)}}
+    if(c.type==='noctiluca'&&Math.random()<dt*.04)c.flash=Math.max(c.flash,.6);
+    c.flash=Math.max(0,c.flash-dt*.7);
+    const sx=SX(c.x),sy=c.y-cy,m=Tp.r*c.s*S*2.5;c.sx=sx;c.sy=sy;c.vis=sx>-m&&sx<W+m&&sy>-m&&sy<H+m;if(!c.vis)continue;
+    const e=c.born<1?1-Math.pow(1-c.born,3):1,sc=c.s*S*e*(1+c.flash*.12);
+    ctx.save();ctx.translate(sx,sy);ctx.rotate(c.a);
+    if(Tp.upright&&Math.cos(c.a)<0)ctx.scale(sc,-sc);else ctx.scale(sc,sc);
+    Tp.draw(c,c.t);ctx.restore()}
+
+  for(let i=rings.length-1;i>=0;i--){const r=rings[i];r.r+=dt*160*S;r.life-=dt*1.1;if(r.life<=0){rings.splice(i,1);continue}
+    ctx.lineWidth=1.5;ctx.strokeStyle=col(r.h,80,r.life*.5);ctx.beginPath();ctx.arc(SX(r.x),r.y-cy,r.r,0,TAU);ctx.stroke()}
+  for(let i=sparks.length-1;i>=0;i--){const p=sparks[i];p.life-=dt/p.d;if(p.life<=0){sparks.splice(i,1);continue}
+    p.x+=p.vx*dt;p.y+=p.vy*dt;p.vx*=.96;p.vy*=.96;const sx=SX(p.x),sy=p.y-cy;glow(sx,sy,6,p.h,p.life);ctx.fillStyle=col(p.h,90,p.life);ctx.fillRect(sx-.8,sy-.8,1.6,1.6)}
+  ctx.textAlign='center';ctx.textBaseline='middle';
+  for(let i=notes.length-1;i>=0;i--){const n=notes[i];n.life-=dt*.55;if(n.life<=0){notes.splice(i,1);continue}
+    n.y-=dt*55*S;const x=SX(n.x)+Math.sin(n.p+n.life*6)*10*S,y=n.y-cy;
+    glow(x,y,22*S*n.sz,n.h,n.life*.8);ctx.font=`${Math.round(26*S*n.sz)}px sans-serif`;ctx.fillStyle=col(n.h,85,n.life);ctx.fillText(n.g,x,y)}
+  ctx.globalCompositeOperation='source-over';
+
+  if(focus){focusT-=rdt;placeCard();if(focusT<=0||!(crit.includes(focus)||decor.includes(focus))){focus=null;card.style.opacity=0}}
+  const dep=Math.round((cy+H/2)/WH*200);
+  if(dep!==lastDepth){lastDepth=dep;dv.textContent=`水深 ${dep} 米`;dk.style.top=(cy/(WH-H)*100)+'%'}
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
