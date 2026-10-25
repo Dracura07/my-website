@@ -62,7 +62,12 @@ body{-webkit-touch-callout:none;-webkit-text-size-adjust:100%}
 </div>
 <div class="depth"><div class="track"><i id="dk"></i></div><span id="dv">水深 20 米</span></div>
 <div id="card"><b id="cn"></b><span id="cf"></span></div>
-<div class="bar"><div class="chips" id="chips"></div></div>
+<div class="bar"><div class="chips" id="chips"></div>
+<div class="chips" id="feed" hidden>
+  <button class="chip" id="f-moss"><span class="dot" style="background:hsl(130,100%,60%);box-shadow:0 0 10px hsl(130,100%,55%)"></span>喂苔藓</button>
+  <button class="chip" id="f-algae"><span class="dot" style="background:hsl(75,100%,60%);box-shadow:0 0 10px hsl(75,100%,55%)"></span>喂藻球</button>
+  <button class="chip" id="f-bye">放它去玩</button>
+</div></div>
 
 <script>
 const TAU=Math.PI*2, rand=(a,b)=>a+Math.random()*(b-a), pick=a=>a[Math.random()*a.length|0];
@@ -195,7 +200,7 @@ tardigrade:{name:'水熊虫',fact:'有八条胖胖的小短腿，在海底慢慢
   ctx.lineWidth=.8;ctx.strokeStyle=col(h,85,.35);ctx.beginPath();for(const x of[-12,-2,8]){ctx.moveTo(x,-11);ctx.quadraticCurveTo(x+2,-1,x,9)}ctx.stroke();
   ctx.beginPath();ctx.arc(24.5,-4.5,1.9,0,TAU);ctx.fillStyle='#04121a';ctx.fill();
   ctx.beginPath();ctx.arc(25,-5,.6,0,TAU);ctx.fillStyle='#fff';ctx.fill();
-  ctx.lineWidth=1.2;ctx.beginPath();ctx.arc(30,0,2.3,0,TAU);ctx.strokeStyle=col(h,88,.85);ctx.stroke();
+  ctx.lineWidth=1.2;ctx.beginPath();ctx.arc(30,0,2.3+(c.eat>0?Math.abs(Math.sin(c.eat*18))*2.2:0),0,TAU);ctx.strokeStyle=col(h,88,.85);ctx.stroke();
   ctx.beginPath();ctx.arc(19,1.5,2,0,TAU);ctx.fillStyle=col(350,80,.35);ctx.fill();
 }},
 euglena:{name:'眼虫',fact:'头上有一个红色的小眼点，能找到太阳光。',hue:[88,110],speed:32,turn:1.1,size:[.95,1.25],r:26,draw(c,t){
@@ -279,7 +284,7 @@ coral(d,t){const h=d.h,f=d.flash;d.top=-70;ctx.rotate(Math.sin(t*.7+d.seed)*.03)
 /* ---------- populate ---------- */
 function make(type,x,y){const T=TYPES[type];return{type,T,x,y,a:Math.random()*TAU,v:T.speed*rand(.75,1.25),h:rand(...T.hue),
   s:rand(...T.size),t:Math.random()*100,flash:0,flashIn:-1,seed:Math.random()*1000,variant:Math.random()<.5?0:1,born:0,dir:Math.random()<.5?1:-1,sx:0,sy:0,vis:false}}
-function add(type,x,y){if(crit.length>=240)crit.splice(crit.findIndex(c=>!c.vis),1);const c=make(type,((x%WW)+WW)%WW,y);crit.push(c);return c}
+function add(type,x,y){if(crit.length>=240){const i=crit.findIndex(c=>!c.vis&&c!==pet);if(i>=0)crit.splice(i,1)}const c=make(type,((x%WW)+WW)%WW,y);crit.push(c);return c}
 function spotY(type){const lo=60,hi=WH-230*S;
   if(type==='noctiluca')return rand(lo,lo+(hi-lo)*.45);
   if(type==='jelly')return rand(lo+(hi-lo)*.2,hi);
@@ -355,9 +360,45 @@ const card=document.getElementById('card'),cn=document.getElementById('cn'),cf=d
 let focus=null,focusT=0;
 function show(c){focus=c;focusT=3.5;cn.textContent=c.T.name;cn.style.color=`hsl(${c.h},100%,78%)`;cf.textContent=c.T.fact;card.style.opacity=1}
 function placeCard(){if(!focus)return;if(!focus.vis){card.style.opacity=0;return}card.style.opacity=1;
-  const top=focus.T.r?focus.sy-focus.T.r*focus.s*S:focus.sy+focus.top*focus.s*S,bot=focus.T.r?focus.sy+focus.T.r*focus.s*S:focus.sy;
+  const top=(focus===pet?-62*S:0)+(focus.T.r?focus.sy-focus.T.r*focus.s*S:focus.sy+focus.top*focus.s*S),bot=focus.T.r?focus.sy+focus.T.r*focus.s*S:focus.sy;
   const cw=card.offsetWidth,ch=card.offsetHeight;let x=focus.sx-cw/2,y=top-ch-12;if(y<70)y=bot+12;
   x=Math.max(12,Math.min(W-cw-12,x));y=Math.max(12,Math.min(H-ch-80,y));card.style.transform=`translate(${x}px,${y}px)`}
+
+/* ---------- 可可的水熊虫: tap one to adopt it, then feed it ---------- */
+let pet=null,foods=[],followHold=0;
+const PETNAME='可可的水熊虫',FONT='"ZCOOL KuaiLe","PingFang SC","Hiragino Sans GB",sans-serif',FOODH={moss:130,algae:75};
+const feedBar=document.getElementById('feed'),chipBar=document.getElementById('chips');
+function wdx(a,b){let d=((a-b)%WW+WW)%WW;if(d>WW/2)d-=WW;return d}
+function heart(x,y,r){ctx.beginPath();ctx.moveTo(x,y+r*.9);ctx.bezierCurveTo(x-r*1.7,y-r*.1,x-r*.8,y-r*1.5,x,y-r*.45);ctx.bezierCurveTo(x+r*.8,y-r*1.5,x+r*1.7,y-r*.1,x,y+r*.9);ctx.closePath()}
+function say(c,title,text){focus=c;focusT=4;cn.textContent=title;cn.style.color='hsl(45,100%,78%)';cf.textContent=text;card.style.opacity=1}
+function hearts(c,n){for(let i=0;i<n;i++)notes.push({x:c.x+rand(-22,22)*S,y:c.y-24*S,life:1+i*.12,h:340,g:'♥',p:Math.random()*TAU,sz:.8})}
+function selectPet(c){
+  if(pet!==c){pet=c;c.s0=c.s0||c.s;c.full=c.full||0}
+  followHold=0;c.hop=.6;feedBar.hidden=false;chipBar.hidden=true;
+  say(c,PETNAME,c.full>=5?'它吃得饱饱的，好开心！':'选中啦！点下面的食物，喂它吃饭吧。');hearts(c,3);
+  if(soundOn&&audio()){tone(freqAt(4,0),0,{w:'triangle',d:.25,g:.3});tone(freqAt(7,0),.12,{w:'triangle',d:.35,g:.3})}}
+function releasePet(){if(pet)say(pet,PETNAME,'去玩吧，想它了再点点它～');pet=null;feedBar.hidden=true;chipBar.hidden=false}
+function dropFood(kind){
+  if(!pet)return;if(foods.length>=24)foods.shift();
+  const x=((pet.x+pet.dir*rand(50,150)*S+rand(-30,30)*S)%WW+WW)%WW;
+  foods.push({x,y:Math.max(cy+40,pet.y-320*S),kind,landed:false,age:0,p:Math.random()*TAU});followHold=0;
+  if(soundOn&&audio())tone(freqAt(7,1),0,{d:.2,g:.15,slide:.7})}
+function nearestFood(c){let best=null,bd=650*S;for(const f of foods){const d=Math.abs(wdx(f.x,c.x));if(d<bd){bd=d;best=f}}return best}
+function eatFood(c,f){foods.splice(foods.indexOf(f),1);c.eat=.7;c.hop=.5;c.full=Math.min(5,c.full+1);c.digest=0;
+  c.s=Math.min(c.s0*1.45,c.s+c.s0*.07);hearts(c,2);burst(f.x,f.y,FOODH[f.kind],12);
+  if(soundOn&&audio()){tone(200,0,{w:'triangle',d:.1,g:.35,slide:.6});tone(200,.16,{w:'triangle',d:.1,g:.35,slide:.6});
+    if(c.full>=5)[0,2,4,5,7].forEach((d,i)=>tone(freqAt(d+5,0),.3+i*.09,{d:.4,g:.2}));else tone(freqAt(5+c.full,0),.32,{d:.3,g:.2})}
+  if(c.full>=5){hearts(c,6);say(c,PETNAME,'吃饱啦！肚子圆滚滚的～')}
+  else say(c,PETNAME,['好吃！还想要～','嗯嗯，真香！','吧唧吧唧～','再来一口！'][c.full%4])}
+function drawFood(f,sx,sy){const tw=.7+.3*Math.sin(T*3+f.p);
+  if(f.kind==='moss'){glow(sx,sy,20*S,130,.6*tw);ctx.lineCap='round';ctx.lineWidth=1.6*S;ctx.strokeStyle='hsla(130,100%,70%,.95)';ctx.beginPath();
+    for(let i=0;i<5;i++){const a=-Math.PI/2+(i-2)*.5;ctx.moveTo(sx,sy+4*S);ctx.quadraticCurveTo(sx+Math.cos(a)*4*S,sy+Math.sin(a)*6*S,sx+Math.cos(a)*10*S,sy+Math.sin(a)*9*S)}ctx.stroke();
+    for(let i=0;i<5;i++){const a=-Math.PI/2+(i-2)*.5;ctx.beginPath();ctx.arc(sx+Math.cos(a)*10*S,sy+Math.sin(a)*9*S,1.4*S,0,TAU);ctx.fillStyle='hsla(130,100%,88%,.95)';ctx.fill()}}
+  else{glow(sx,sy,20*S,75,.7*tw);ctx.beginPath();ctx.arc(sx,sy,5.5*S,0,TAU);ctx.fillStyle='hsla(75,100%,55%,.45)';ctx.fill();ctx.lineWidth=1.2;ctx.strokeStyle='hsla(75,100%,82%,.95)';ctx.stroke();
+    for(let i=0;i<4;i++){ctx.beginPath();ctx.arc(sx+Math.cos(i*1.6+f.p)*2.5*S,sy+Math.sin(i*1.6+f.p)*2.5*S,.9*S,0,TAU);ctx.fillStyle='hsla(75,100%,92%,.9)';ctx.fill()}}}
+document.getElementById('f-moss').onclick=()=>dropFood('moss');
+document.getElementById('f-algae').onclick=()=>dropFood('algae');
+document.getElementById('f-bye').onclick=releasePet;
 
 /* ---------- touch: drag to swim around, tap to sing ---------- */
 let hinted=false,drag=null,vx=0,vy=0;
@@ -368,7 +409,7 @@ function tap(sx,sy){
   if(!best)for(const d of decor){if(!d.vis)continue;const top=d.sy+d.top*d.s*S;
     if(Math.abs(d.sx-sx)<34*S*d.s&&sy>top-20&&sy<d.sy+10){best=d;break}}
   rings.push({x,y,r:0,life:1,h:best?best.h:195});excite(x,y);
-  if(best){best.flash=1;if(best.T.r)best.a+=rand(-1,1);show(best);burst(best.T.r?best.x:x,best.T.r?best.y:y,best.h,14);sing(best)}
+  if(best){best.flash=1;if(best.type==='tardigrade')selectPet(best);else{if(best.T.r)best.a+=rand(-1,1);show(best);sing(best)}burst(best.T.r?best.x:x,best.T.r?best.y:y,best.h,14)}
   else{const k=pick(KEYS),c=add(k,x,k==='tardigrade'?y:Math.min(y,floorY(x)-40*S));c.sx=sx;c.sy=sy;c.vis=true;c.flash=1;show(c);burst(x,y,c.h,22);sing(c)}
 }
 cv.addEventListener('pointerdown',e=>{if(drag)return;audio&&soundOn&&audio();
@@ -376,7 +417,7 @@ cv.addEventListener('pointerdown',e=>{if(drag)return;audio&&soundOn&&audio();
 cv.addEventListener('pointermove',e=>{if(!drag||e.pointerId!==drag.id)return;
   const dx=e.clientX-drag.lx,dy=e.clientY-drag.ly,now=performance.now(),dt=Math.max(1,now-drag.lt)/1000;
   if(!drag.moved&&Math.hypot(e.clientX-drag.x0,e.clientY-drag.y0)>9){drag.moved=true;cv.style.cursor='grabbing'}
-  if(drag.moved){cx-=dx;cy=Math.max(0,Math.min(WH-H,cy-dy));vx=vx*.5+(-dx/dt)*.5;vy=vy*.5+(-dy/dt)*.5}
+  if(drag.moved){followHold=4;cx-=dx;cy=Math.max(0,Math.min(WH-H,cy-dy));vx=vx*.5+(-dx/dt)*.5;vy=vy*.5+(-dy/dt)*.5}
   drag.lx=e.clientX;drag.ly=e.clientY;drag.lt=now});
 function endDrag(e,cancel){if(!drag||e.pointerId!==drag.id)return;
   if(!drag.moved&&!cancel)tap(e.clientX,e.clientY);else{unhint();if(performance.now()-drag.lt>90)vx=vy=0}
@@ -429,6 +470,8 @@ function steer(c,target,k,dt){c.a+=Math.sin(target-c.a)*k*dt}
 function frame(now){
   const rdt=Math.min(.05,(now-last)/1000),dt=rdt*SPD;last=now;T+=dt;
   if(!drag){cx+=vx*rdt;cy+=vy*rdt;const f=Math.pow(.04,rdt);vx*=f;vy*=f;if(Math.abs(vx)<2)vx=0;if(Math.abs(vy)<2)vy=0}
+  if(pet){pet.digest=(pet.digest||0)+dt;if(pet.digest>30&&pet.full>0){pet.full--;pet.digest=0}
+    if(!drag){if(followHold>0)followHold-=rdt;else{const k=Math.min(1,rdt*2.2);cx+=wdx(pet.x,cx+W/2)*k;cy+=(pet.y-H*.6-cy)*k;vx=vy=0}}}
   cy=Math.max(0,Math.min(WH-H,cy));if(cy<=0||cy>=WH-H)vy=0;cx=((cx%WW)+WW)%WW;
 
   ctx.setTransform(dpr,0,0,dpr,0,0);
@@ -448,7 +491,11 @@ function frame(now){
     const boost=1+c.flash*1.5;
     if(Tp.floor){const fy=floorY(c.x)-17*c.s*S;
       if(c.y<fy-1){c.y=Math.min(fy,c.y+70*S*dt);c.a=c.dir>0?0:Math.PI}
-      else{c.x+=c.dir*c.v*S*dt*boost;c.y=floorY(c.x)-17*c.s*S;const sl=Math.atan2(floorY(c.x+6)-floorY(c.x-6),12);c.a=c.dir>0?sl:sl+Math.PI;if(Math.random()<dt*.04)c.dir*=-1}}
+      else{let sp=c.v*S*dt*boost;
+        if(c.eat>0){c.eat-=dt;sp=0}
+        else if(c===pet&&nearestFood(c)){const fd=nearestFood(c),dx=wdx(fd.x,c.x);c.dir=dx>0?1:-1;sp=Math.min(Math.abs(dx),sp*2.6);if(Math.abs(dx)<26*S*c.s&&fd.landed)eatFood(c,fd)}
+        else if(Math.random()<dt*.04)c.dir*=-1;
+        c.x+=c.dir*sp;c.y=floorY(c.x)-17*c.s*S;const sl=Math.atan2(floorY(c.x+6)-floorY(c.x-6),12);c.a=c.dir>0?sl:sl+Math.PI}}
     else{
       c.a+=(Math.sin(c.t*.7+c.seed)+.6*Math.sin(c.t*.23+c.seed*2))*Tp.turn*dt;
       if(Tp.pulse)steer(c,-Math.PI/2,.35,dt);
@@ -462,10 +509,19 @@ function frame(now){
     c.flash=Math.max(0,c.flash-dt*.7);
     const sx=SX(c.x),sy=c.y-cy,m=Tp.r*c.s*S*2.5;c.sx=sx;c.sy=sy;c.vis=sx>-m&&sx<W+m&&sy>-m&&sy<H+m;if(!c.vis)continue;
     const e=c.born<1?1-Math.pow(1-c.born,3):1,sc=c.s*S*e*(1+c.flash*.12);
-    ctx.save();ctx.translate(sx,sy);ctx.rotate(c.a);
+    ctx.save();ctx.translate(sx,sy-(c.hop>0?(c.hop-=rdt,Math.abs(Math.sin(c.hop*9.4))*10*S):0));ctx.rotate(c.a);
     if(Tp.upright&&Math.cos(c.a)<0)ctx.scale(sc,-sc);else ctx.scale(sc,sc);
     Tp.draw(c,c.t);ctx.restore()}
 
+  for(let i=foods.length-1;i>=0;i--){const f=foods[i];f.age+=dt;
+    if(!f.landed){f.y+=110*S*dt;f.x+=Math.sin(T*2+f.p)*14*S*dt;const g=floorY(f.x)-6*S;if(f.y>=g){f.y=g;f.landed=true}}
+    if(f.age>45){foods.splice(i,1);continue}
+    const sx=SX(f.x),sy=f.y-cy;if(sx>-20&&sx<W+20&&sy>-20&&sy<H+20)drawFood(f,sx,sy)}
+  if(pet&&pet.vis){const r=pet.T.r*pet.s*S,bob=Math.sin(T*3)*4*S,hx=pet.sx,hy=pet.sy-r-20*S+bob;
+    ctx.lineWidth=2;ctx.strokeStyle=`hsla(45,100%,75%,${.45+.3*Math.sin(T*4)})`;ctx.beginPath();ctx.ellipse(pet.sx,pet.sy+17*pet.s*S,r*1.15,r*.3,0,0,TAU);ctx.stroke();
+    glow(hx,hy,28*S,340,.9);heart(hx,hy,9*S);ctx.fillStyle='hsla(340,100%,72%,.95)';ctx.fill();
+    ctx.textAlign='center';ctx.textBaseline='middle';ctx.font=`${Math.round(15*S)}px ${FONT}`;ctx.fillStyle='hsla(45,100%,85%,.95)';ctx.fillText(PETNAME,hx,hy-22*S);
+    for(let i=0;i<5;i++){heart(hx+(i-2)*13*S,hy-40*S,4*S);ctx.fillStyle=i<pet.full?'hsla(340,100%,70%,.95)':'hsla(340,60%,70%,.22)';ctx.fill()}}
   for(let i=rings.length-1;i>=0;i--){const r=rings[i];r.r+=dt*160*S;r.life-=dt*1.1;if(r.life<=0){rings.splice(i,1);continue}
     ctx.lineWidth=1.5;ctx.strokeStyle=col(r.h,80,r.life*.5);ctx.beginPath();ctx.arc(SX(r.x),r.y-cy,r.r,0,TAU);ctx.stroke()}
   for(let i=sparks.length-1;i>=0;i--){const p=sparks[i];p.life-=dt/p.d;if(p.life<=0){sparks.splice(i,1);continue}
