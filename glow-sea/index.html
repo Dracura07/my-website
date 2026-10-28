@@ -81,7 +81,8 @@ function seeded(s){let x=Math.sin(s)*1e4;return x-Math.floor(x)}
 
 let W,H,S,dpr,vig,WW=0,WH=0,cx=0,cy=0;
 let crit=[],decor=[],bubbles=[],sparks=[],rings=[],snow=[],notes=[];
-function floorY(x){const k=TAU*x/WW;return WH-S*(115+45*Math.sin(k*3)+28*Math.sin(k*7+1)+12*Math.sin(k*17+2))}
+function floorY(x){const k=TAU*x/WW,raw=WH-S*(115+45*Math.sin(k*3)+28*Math.sin(k*7+1)+12*Math.sin(k*17+2));
+  const d=Math.abs(wdx(x,WW*.7)),w=Math.max(0,Math.min(1,1-(d-330*S)/(220*S)));return raw+(WH-S*120-raw)*w*w*(3-2*w)}
 function resize(){
   dpr=Math.min(2,devicePixelRatio||1);W=innerWidth;H=innerHeight;
   cv.width=W*dpr;cv.height=H*dpr;cv.style.width=W+'px';cv.style.height=H+'px';
@@ -246,6 +247,8 @@ const DECOR={
 kelp:{name:'海带',fact:'海里长长的森林，跟着水流轻轻摇摆。'},
 anemone:{name:'海葵',fact:'像一朵会动的花，碰一下就会把触手缩起来。'},
 coral:{name:'珊瑚',fact:'是很多很小很小的小动物，一起盖起来的房子。'},
+ribbon:{name:'彩虹海藻',fact:'长长的海藻像丝带一样飘呀飘，尖尖上会发光。'},
+grass:{name:'荧光海草',fact:'一小丛一小丛的，像人鱼城堡门口的小路灯。'},
 clam:{name:'珍珠贝',fact:'贝壳里藏着一颗会发光的珍珠，是人鱼仙子的宝贝。'}
 };
 function makeCoral(sd){const segs=[];let n=0;
@@ -258,7 +261,12 @@ function buildDecor(){decor=[];let x=rand(0,40);
     const h=type==='kelp'?rand(125,170):type==='anemone'?pick([300,325,20,45]):type==='clam'?pick([300,320,190,270]):pick([350,15,35,185,275]);
     const sd=Math.random()*1000;
     decor.push({type,T:DECOR[type],x,h,s:rand(.8,1.25),seed:sd,flash:0,n:10+(Math.random()*8|0),segs:type==='coral'?makeCoral(sd):null,top:-60});
-    x+=(z==='reef'?rand(28,62):rand(45,105))*S}}
+    x+=(z==='reef'?rand(28,62):rand(45,105))*S}
+  const C=WW*.7;decor=decor.filter(d=>Math.abs(wdx(d.x,C))>360*S);
+  const put=(type,x,h,s)=>decor.push({type,T:DECOR[type],x:((x%WW)+WW)%WW,h,s,seed:Math.random()*1000,flash:0,n:Math.random()*6|0,segs:null,top:type==='ribbon'?-200:-60});
+  for(let i=0;i<18;i++)put('ribbon',C+(i%2?1:-1)*rand(250,760)*S,pick([175,195,285,305,325,45,160]),rand(.9,1.35));
+  for(let i=0;i<14;i++)put('grass',C+rand(-340,340)*S,pick([175,190,300,320,50]),rand(.8,1.2));
+  decor.sort((a,b)=>a.x-b.x)}
 const DRAWD={
 kelp(d,t){const h=d.h,f=d.flash;let x=0,y=0;const pts=[[0,0,-Math.PI/2]];
   for(let i=0;i<d.n;i++){const a=-Math.PI/2+Math.sin(t*1.1-i*.33+d.seed)*.045*i;x+=Math.cos(a)*18;y+=Math.sin(a)*18;pts.push([x,y,a])}
@@ -279,6 +287,23 @@ anemone(d,t){const h=d.h,f=d.flash,shrink=1-f*.55;d.top=-44;
     const ex=Math.cos(a)*L,ey=-16+Math.sin(a)*L,mx=Math.cos(a)*L*.5-Math.sin(a)*sw,my=-16+Math.sin(a)*L*.5+Math.cos(a)*sw;
     ctx.lineWidth=2.2;ctx.strokeStyle=col(h,68,.65);ctx.beginPath();ctx.moveTo(0,-16);ctx.quadraticCurveTo(mx,my,ex,ey);ctx.stroke();
     glow(ex,ey,7,h,.6+f);ctx.beginPath();ctx.arc(ex,ey,2,0,TAU);ctx.fillStyle=col(h,92,.95);ctx.fill()}
+},
+ribbon(d,t){const n=3+d.n%3,f=d.flash;d.top=-190;
+  for(let k=0;k<n;k++){const hue=d.h+k*22,L=150+seeded(d.seed+k)*80,off=k-(n-1)/2,pts=[];let x=off*8,y=0;
+    for(let i=0;i<=18;i++){const u=i/18,a=-Math.PI/2+off*.14*u+Math.sin(t*.9-u*2.6+d.seed+k*1.7)*.38*u;if(i){x+=Math.cos(a)*L/18;y+=Math.sin(a)*L/18}pts.push([x,y,u,a])}
+    const wd=u=>(3+7*Math.sin(Math.PI*Math.min(1,u*1.15)))*(1-u*.45)+Math.sin(u*12-t*3+k)*1.2*u;
+    ctx.beginPath();pts.forEach(([px,py,u,a],i)=>{const w=wd(u),qx=px-Math.sin(a)*w,qy=py+Math.cos(a)*w;i?ctx.lineTo(qx,qy):ctx.moveTo(qx,qy)});
+    for(let i=18;i>=0;i--){const[px,py,u,a]=pts[i],w=wd(u);ctx.lineTo(px+Math.sin(a)*w,py-Math.cos(a)*w)}ctx.closePath();
+    const[tx,ty]=pts[18],g=ctx.createLinearGradient(0,0,tx,ty);g.addColorStop(0,col(hue,45,.08));g.addColorStop(.5,col(hue+15,60,.3+f*.2));g.addColorStop(1,col(hue+35,75,.65+f*.3));
+    ctx.fillStyle=g;ctx.fill();ctx.lineWidth=.7;ctx.strokeStyle=col(hue+25,85,.35+f*.4);ctx.stroke();
+    for(let i=4;i<18;i+=3){const[px,py]=pts[i],tw=.4+.4*Math.sin(t*2+i+k*3);ctx.beginPath();ctx.arc(px,py,1.3,0,TAU);ctx.fillStyle=col(hue+40,90,Math.min(1,tw+f*.5));ctx.fill()}
+    glow(tx,ty,16+f*24,hue+40,.7+f);ctx.beginPath();ctx.arc(tx,ty,2.4,0,TAU);ctx.fillStyle=col(hue+40,92,.95);ctx.fill();
+    if(Math.random()<.01)sparks.push({x:d.x+tx*S*d.s,y:d.y+ty*S*d.s,vx:rand(-6,6),vy:-rand(10,22),life:1,d:rand(1.8,2.8),h:hue+40})}
+},
+grass(d,t){const h=d.h,f=d.flash;d.top=-55;
+  for(let i=0;i<11;i++){const bx=(i-5)*3.2,L=28+seeded(d.seed+i)*30,sw=Math.sin(t*1.3+i*.6+d.seed)*6,ex=bx+sw+(i-5)*1.5,ey=-L;
+    ctx.lineWidth=1.3;ctx.strokeStyle=col(h,70,.55+f*.3);ctx.beginPath();ctx.moveTo(bx,0);ctx.quadraticCurveTo(bx+sw*.2,-L*.55,ex,ey);ctx.stroke();
+    const tw=.5+.5*Math.sin(t*2.2+i*1.9+d.seed);glow(ex,ey,7+f*8,h+20,.4*tw+f*.6);ctx.beginPath();ctx.arc(ex,ey,1.4,0,TAU);ctx.fillStyle=col(h+20,92,.5+tw*.5);ctx.fill()}
 },
 clam(d,t){const h=d.h,f=d.flash,open=.35+.12*Math.sin(t*.8+d.seed)+f*.35;d.top=-34;
   glow(0,-8,48,h,.4+f);ctx.lineWidth=1.3;
@@ -335,7 +360,7 @@ function tell(o,title,text,h){focus=o;focusT=4;cn.textContent=title;cn.style.col
 function makeSchool(x,y){const s={x,y,a:Math.random()<.5?0:Math.PI,v:rand(40,52),seed:Math.random()*99,t:0,m:[]},h=rand(185,200);
   for(let i=0;i<16;i++)s.m.push({T:NEON,keep:true,ox:rand(-60,60),oy:rand(-28,28),dx:0,dy:0,vx:0,vy:0,s:rand(1.2,1.5),seed:Math.random()*99,t:Math.random()*9,flash:0,h:h+rand(-8,8),vis:false});return s}
 function spawnSea(){
-  mermaids=MNAMES.map((name,i)=>({name,keep:true,T:{r:44},x:rz('cove'),y:rand(H*.5,H*1.35),vx:0,vy:0,dir:Math.random()<.5?1:-1,
+  mermaids=MNAMES.map((name,i)=>({name,keep:true,T:{r:44},x:rz('cove'),y:WH-S*rand(190,400),vx:0,vy:0,dir:Math.random()<.5?1:-1,
     h:[185,300,330,270,45,160,210][i],hh:[45,195,280,330,175,320,50][i],s:rand(.85,.98),t:Math.random()*99,seed:Math.random()*99,tune:i%TUNES.length,flash:0,singT:0,twirl:0,arm:0,tx:null,retarget:0,vis:false}));
   fish=[...Array(10).fill('angel'),...Array(4).fill('angler'),...Array(7).fill('seahorse')].map(k=>{const F=FISH[k];
     return{kind:k,F,T:F,keep:true,x:rz('reef'),y:F.low?WH*.85:rand(H*.4,WH*.72),a:Math.random()<.5?0:Math.PI,v:F.speed*rand(.8,1.2),h:pick(F.hues),s:rand(...F.size),t:Math.random()*99,seed:Math.random()*99,flash:0,flipT:0,hopT:0,vis:false}});
@@ -426,7 +451,52 @@ function hitSpecial(sx,sy){
   for(const m of mermaids)if(m.vis&&Math.hypot(m.sx-sx,m.sy-10*S*m.s-sy)<Math.max(34,46*S*m.s)){tapMermaid(m);return m}
   for(const f of fish)if(f.vis&&Math.hypot(f.sx-sx,f.sy-sy)<Math.max(30,f.F.r*f.s*S*1.2)){tapFish(f);return f}
   for(const s of schools)for(const q of s.m)if(q.vis&&Math.hypot(q.sx-sx,q.sy-sy)<30){scatter(s,sx,sy);return q}
+  {const cs=castleScreen();if(sx>cs.x-190*S&&sx<cs.x+190*S&&sy>cs.y-420*S&&sy<cs.y){tapCastle(sx,sy);return{h:45}}}
   return null}
+/* the mermaids' castle: giant conch shells stacked into towers, a scallop gate, warm lit windows */
+const CASTLE_PARTS=[
+  ['conch',-128,4,118,300,318,-.07],['conch',138,4,108,262,282,.08],
+  ['turban',-236,0,46,330],['turban',-188,2,40,20],['turban',190,2,42,300],['turban',240,0,48,270],
+  ['turban',-212,-70,34,300],['turban',216,-72,36,25],
+  ['conch',0,6,170,415,335,0],
+  ['conch',-212,-96,58,130,20,-.12],['conch',218,-100,54,120,300,.12],
+  ['gate',0,0,130,150,30]];
+let castleFlash=0;
+function castleScreen(){return{x:SX(WW*.7,800),y:WH-S*120-cy}}
+function shellFill(h,l){ctx.globalCompositeOperation='source-over';ctx.fillStyle=`hsla(${h},45%,${l}%,.96)`;ctx.fill();ctx.globalCompositeOperation='lighter'}
+function drawConch(x,y,w,h,hue,tl,t){ctx.save();ctx.translate(x,y);ctx.rotate(tl);
+  const N=40,n=Math.max(4,Math.round(h/55)),R=f=>w/2*Math.pow(1-f,.85)*(1+.18*Math.sin(Math.PI*f))*(1+.09*Math.pow(Math.max(0,Math.cos(f*n*TAU)),8));
+  ctx.beginPath();for(let i=0;i<=N;i++){const f=i/N;ctx.lineTo(-R(f),-h*f)}for(let i=N;i>=0;i--){const f=i/N;ctx.lineTo(R(f),-h*f)}ctx.closePath();
+  shellFill(hue,15);ctx.lineWidth=2;ctx.strokeStyle=col(hue,80,.75);ctx.stroke();ctx.fillStyle=col(hue,60,.07);ctx.fill();
+  const band=(f,k,a,lw)=>{const f2=Math.min(.99,f+.6/n),y1=-h*f,y2=-h*f2;ctx.lineWidth=lw;ctx.strokeStyle=col(hue,85,a);ctx.beginPath();ctx.moveTo(-R(f)*k,y1);ctx.quadraticCurveTo(0,(y1+y2)/2+R(f)*.35,R(f2)*k,y2);ctx.stroke()};
+  for(let j=0;j<n*3;j++)band((j+.5)/(n*3),.9,.2,.6);for(let j=1;j<n;j++)band(j/n,1,.55,1.4);
+  for(let j=1;j<n-1;j++){if((j+Math.round(x))%2)continue;const f=(j+.45)/n,yy=-h*f,xx=(j%3-1)*R(f)*.35,ww=Math.max(5,R(f)*.22),hh=ww*1.5,tw=.75+.25*Math.sin(t*1.3+j*2+x)+castleFlash;
+    glow(xx,yy-hh*.4,ww*4,45,.35*tw);ctx.beginPath();ctx.moveTo(xx-ww/2,yy);ctx.lineTo(xx-ww/2,yy-hh*.6);ctx.arc(xx,yy-hh*.6,ww/2,Math.PI,0);ctx.lineTo(xx+ww/2,yy);ctx.closePath();
+    ctx.fillStyle=`hsla(42,100%,${62+Math.min(1,tw)*12}%,${Math.min(1,.55+tw*.3)})`;ctx.fill()}
+  glow(0,-h,22,50,.8+castleFlash);ctx.beginPath();ctx.arc(0,-h-2,4.5,0,TAU);ctx.fillStyle='hsla(50,100%,88%,.95)';ctx.fill();ctx.restore()}
+function drawTurban(x,y,r,hue,t){const ox=x,oy=y-r*.95;
+  ctx.beginPath();ctx.ellipse(ox,oy,r,r*.95,0,0,TAU);shellFill(hue,15);ctx.lineWidth=1.8;ctx.strokeStyle=col(hue,80,.75);ctx.stroke();
+  ctx.lineWidth=1.2;ctx.strokeStyle=col(hue,85,.5);ctx.beginPath();for(let i=0;i<=60;i++){const a=i/60*TAU*2.6,rr=r*.9*(1-i/72);ctx.lineTo(ox+Math.cos(a)*rr,oy+Math.sin(a)*rr*.95)}ctx.stroke();
+  const tw=.7+.3*Math.sin(t*1.7+x)+castleFlash;glow(ox,oy,r*.9,45,.25*tw);ctx.beginPath();ctx.arc(ox,oy,r*.16,0,TAU);ctx.fillStyle=`hsla(45,100%,75%,${Math.min(1,.5+tw*.3)})`;ctx.fill()}
+function drawGate(x,y,w,h,hue,t){const ribs=11,P=a=>[x+Math.cos(a)*w/2,y+Math.sin(a)*h];
+  ctx.beginPath();ctx.moveTo(x-w/2,y);for(let i=0;i<ribs;i++){const a=Math.PI+i/ribs*Math.PI,b=Math.PI+(i+1)/ribs*Math.PI,m=(a+b)/2,[bx,by]=P(b);ctx.quadraticCurveTo(x+Math.cos(m)*w/2*1.1,y+Math.sin(m)*h*1.1,bx,by)}ctx.closePath();
+  shellFill(hue,20);ctx.lineWidth=2;ctx.strokeStyle=col(hue,85,.8);ctx.stroke();ctx.fillStyle=col(hue,70,.08);ctx.fill();
+  ctx.lineWidth=1.1;ctx.strokeStyle=col(hue,85,.4);ctx.beginPath();for(let i=0;i<=ribs;i++){const[px,py]=P(Math.PI+i/ribs*Math.PI);ctx.moveTo(x,y);ctx.lineTo(x+(px-x)*.97,y+(py-y)*.97)}ctx.stroke();
+  const dw=w*.36,dh=h*.62,tw=.8+.2*Math.sin(t*1.1)+castleFlash;
+  ctx.beginPath();ctx.moveTo(x-dw/2,y);ctx.lineTo(x-dw/2,y-dh+dw/2);ctx.arc(x,y-dh+dw/2,dw/2,Math.PI,0);ctx.lineTo(x+dw/2,y);ctx.closePath();
+  ctx.globalCompositeOperation='source-over';ctx.fillStyle='hsla(40,60%,12%,1)';ctx.fill();ctx.globalCompositeOperation='lighter';
+  glow(x,y-dh*.45,dw*2.2,42,.6*tw);ctx.fillStyle=`hsla(42,100%,60%,${Math.min(1,.35*tw)})`;ctx.fill();ctx.lineWidth=2;ctx.strokeStyle=col(45,90,.85);ctx.stroke();
+  for(let i=0;i<7;i++){const a=Math.PI+i/6*Math.PI;ctx.beginPath();ctx.arc(x+Math.cos(a)*(dw/2+6),y-dh+dw/2+Math.sin(a)*(dw/2+6),2.6,0,TAU);ctx.fillStyle='hsla(50,100%,88%,.9)';ctx.fill()}
+  glow(x,y-h-6,24,50,.9+castleFlash);ctx.beginPath();ctx.arc(x,y-h-6,6,0,TAU);ctx.fillStyle='hsla(330,100%,90%,.95)';ctx.fill()}
+function drawCastle(t,dt){castleFlash=Math.max(0,castleFlash-dt*.6);const{x,y}=castleScreen();
+  if(x<-420*S||x>W+420*S||y-460*S>H||y<-40)return;
+  ctx.save();ctx.translate(x,y);ctx.scale(S,S);ctx.globalCompositeOperation='lighter';glow(0,-200,430,320,.35+castleFlash*.4);glow(0,-60,260,45,.18);
+  for(const[k,px,py,a,b,h,tl]of CASTLE_PARTS){if(k==='conch')drawConch(px,py,a,b,h,tl,t);else if(k==='turban')drawTurban(px,py,a,b,t);else drawGate(px,py,a,b,h,t)}
+  ctx.restore();ctx.globalCompositeOperation='source-over'}
+function tapCastle(sx,sy){castleFlash=1;burst(cx+sx,cy+sy,45,20);
+  tell({keep:true,T:{r:0},s:1,sx,sy:sy-10,vis:true},'人鱼城堡','人鱼仙子们的家，是用好多巨大的海螺堆起来的，窗户里亮着暖暖的灯。',330);
+  if(soundOn&&audio())[0,1,2,3,4,5,6,7,9,11].forEach((n,i)=>harp(dF(n),i*.06,.09));
+  const near=mermaids.filter(m=>m.vis&&m.singT<=0);if(near.length){const m=pick(near);m.singT=singTune(m,false);m.twirl=1}}
 function updateSea(dt,rdt){
   const xc=cx+W/2,z=['reef','cove','home'].find(k=>zoneW(xc,k)>.6)||null;
   if(z!==curZone){curZone=z;if(z){zoneEl.textContent=ZONES[z].name;zoneEl.style.opacity=1;zoneT=3}}
@@ -435,7 +505,7 @@ function updateSea(dt,rdt){
   for(const m of mermaids){m.t+=dt;m.flash=Math.max(0,m.flash-dt*.6);
     if(m.singT>0){m.singT-=rdt;m.vx*=Math.pow(.2,dt);m.vy+=(-8*S-m.vy)*Math.min(1,dt)}
     else{m.retarget-=dt;
-      if(m.tx==null||m.retarget<=0||Math.hypot(wdx(m.tx,m.x),m.ty-m.y)<20*S){m.tx=rz('cove');m.ty=rand(H*.5,H*1.35);m.retarget=rand(8,16)}
+      if(m.tx==null||m.retarget<=0||Math.hypot(wdx(m.tx,m.x),m.ty-m.y)<20*S){m.tx=rz('cove');m.ty=floorY(m.tx)-rand(70,290)*S;m.retarget=rand(8,16)}
       const dx=wdx(m.tx,m.x),dy=m.ty-m.y,d=Math.hypot(dx,dy)||1,sp=26*S,k=Math.min(1,dt*.8);m.vx+=(dx/d*sp-m.vx)*k;m.vy+=(dy/d*sp*.6-m.vy)*k}
     m.x=((m.x+m.vx*dt)%WW+WW)%WW;m.y=Math.max(70,Math.min(floorY(m.x)-70*S,m.y+m.vy*dt));
     if(Math.abs(m.vx)>4*S&&m.singT<=0)m.dir=m.vx>0?1:-1;
@@ -523,6 +593,8 @@ const VOICES={
   jelly:d=>tone(freqAt(d,0),0,{d:1.3,g:.26,a:.06,slide:1.5,vib:5}),
   kelp:d=>{tone(freqAt(d,-1),0,{w:'triangle',d:1.1,g:.3,a:.08});tone(freqAt(d+4,-1),.2,{w:'triangle',d:1,g:.18,a:.08})},
   anemone:d=>[0,1,2,3].forEach(i=>tone(freqAt(d+3-i,1),i*.05,{d:.35,g:.13})),
+  ribbon:d=>[0,2,4,7].forEach((k,i)=>tone(freqAt(d+k,1),i*.08,{d:1.2,g:.1,vib:4})),
+  grass:d=>[0,1,2].forEach(i=>tone(freqAt(d+i*2,2),i*.05,{d:.4,g:.08})),
   clam:d=>{const f=freqAt(d,2);tone(f,0,{d:1.8,g:.14});tone(f*2.01,0,{d:1,g:.05})},
   coral:d=>{const f=freqAt(d,1);tone(f,0,{d:1.5,g:.2});tone(f*2.76,0,{d:.6,g:.05});tone(freqAt(d+2,1),.15,{d:1.2,g:.12})}
 };
@@ -653,7 +725,7 @@ cv.addEventListener('pointercancel',e=>endDrag(e,true));
 
 const chips=document.getElementById('chips');
 [['← 发光鱼礁','reef'],['微生物花园','home'],['人鱼湾 →','cove']].forEach(([label,z])=>{const b=document.createElement('button');b.className='chip nav';b.id='nav-'+z;b.textContent=label;
-  b.onclick=()=>{nav={x:ZONES[z].c*WW-W/2,y:z==='home'?H*.25:z==='cove'?H*.4:Math.min(WH-H,WH*.3)};vx=vy=0};chips.appendChild(b)});
+  b.onclick=()=>{nav={x:ZONES[z].c*WW-W/2,y:z==='home'?H*.25:z==='cove'?WH-H:Math.min(WH-H,WH*.3)};vx=vy=0};chips.appendChild(b)});
 KEYS.forEach(k=>{const T=TYPES[k],b=document.createElement('button');b.className='chip';b.id='chip-'+k;
   const hm=(T.hue[0]+T.hue[1])/2;b.innerHTML=`<span class="dot" style="background:hsl(${hm},100%,65%);box-shadow:0 0 10px hsl(${hm},100%,60%)"></span>${T.name}`;
   b.onclick=()=>{const sx=rand(.25,.75)*W,sy=rand(.3,.6)*H,x=cx+sx,y=k==='tardigrade'?cy+sy:Math.min(cy+sy,floorY(x)-50*S);
@@ -708,7 +780,7 @@ function frame(now){
   cy=Math.max(0,Math.min(WH-H,cy));if(cy<=0||cy>=WH-H)vy=0;cx=((cx%WW)+WW)%WW;
 
   ctx.setTransform(dpr,0,0,dpr,0,0);
-  drawScenery(now);drawFloor();
+  drawScenery(now);drawCastle(T,dt);drawFloor();
   ctx.globalCompositeOperation='lighter';
 
   for(const d of decor){d.flash=Math.max(0,d.flash-dt*.8);const sx=SX(d.x),base=floorY(d.x)-cy+4;
